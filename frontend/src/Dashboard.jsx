@@ -38,6 +38,8 @@ export default function Dashboard({ sensorData, threatHistory, alerts, connected
   const speed = sd.speed || 3.8;
   const heading = sd.heading || 52;
   const threatScore = sd.threatScore || 86;
+  const secLevel = sd.security_level || "SAFE";
+  const bHash = sd.blockchain_hash ? sd.blockchain_hash.substring(0, 16) + '...' : "SYS_WAIT";
 
   return (
     <div className="relative min-h-screen bg-[#020503] text-green-500 p-4 font-mono z-10 flex flex-col gap-4 overflow-x-hidden">
@@ -47,7 +49,7 @@ export default function Dashboard({ sensorData, threatHistory, alerts, connected
         <div className="flex items-center gap-3">
           <ShieldAlert size={28} className="text-red-500 drop-shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
           <div className="flex flex-col">
-            <h1 className="text-xl font-bold tracking-[0.2em] text-green-400">SENTINEL TACTICAL SYSTEM</h1>
+            <h1 className="text-xl font-bold tracking-[0.2em] text-green-400">SPECTR TACTICAL SYSTEM</h1>
             <span className="text-[10px] tracking-[0.1em] text-green-500/60 uppercase">STS-MKIII • UNIT 7 • FIELD OPS</span>
           </div>
         </div>
@@ -59,15 +61,25 @@ export default function Dashboard({ sensorData, threatHistory, alerts, connected
           </div>
         )}
 
-        <div className="flex items-center gap-4 text-[10px] tracking-widest text-green-500/80 mb-2">
-          <div className="hidden sm:flex items-center gap-[4px]"><BatteryCharging size={12} /> 97%</div>
-          <div className="hidden sm:flex items-center gap-[4px]"><Wifi size={12} /> SECURE</div>
-          <div className="hidden md:flex items-center gap-[4px]"><Cpu size={12} /> CPU 24%</div>
-          <div className="hidden md:flex items-center gap-[4px]"><HardDrive size={12} /> COM-7</div>
-          <div className="flex flex-col text-right pl-4 border-l border-green-500/30">
-            <span className="text-green-400 font-bold text-sm tracking-widest">{time.toLocaleTimeString()}</span>
-            <span className="opacity-60 text-[8px] uppercase">{time.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })}</span>
-          </div>
+        <div className="flex flex-col items-end gap-1 mb-2">
+           <div className="flex items-center gap-4 text-[9px] tracking-widest text-green-500/80">
+             <div className="hidden sm:flex items-center gap-1 border border-green-500/30 px-2 py-0.5 bg-[#051308]">
+                <span className="opacity-60">CRYPTO:</span>
+                <span className={secLevel === "GHOST" ? "text-purple-400 font-bold animate-pulse" : secLevel === "ALERT" ? "text-orange-400 font-bold" : "text-green-400 font-bold"}>
+                   {secLevel}
+                </span>
+             </div>
+             <div className="hidden md:flex items-center gap-[4px]"><Cpu size={12} /> CPU 24%</div>
+             <div className="hidden md:flex items-center gap-[4px]"><HardDrive size={12} /> COM-7</div>
+             <div className="flex flex-col text-right pl-4 border-l border-green-500/30">
+               <span className="text-green-400 font-bold text-sm tracking-widest">{time.toLocaleTimeString()}</span>
+               <span className="opacity-60 text-[8px] uppercase">{time.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })}</span>
+             </div>
+           </div>
+           
+           <div className="text-[8px] font-mono tracking-widest text-green-500/40 mt-1 opacity-70">
+              HASH_ID: <span className="text-green-500/60">{bHash}</span>
+           </div>
         </div>
       </header>
 

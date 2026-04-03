@@ -1,5 +1,5 @@
 print("[TRACE] Booting bridge...", flush=True)
-import time, json, cv2, threading, requests, base64, ssl
+import time, json, cv2, threading, requests, base64, ssl, queue, hashlib, secrets, random
 import paho.mqtt.client as mqtt
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import unpad
@@ -14,6 +14,53 @@ PASSWORD = "Spectr@123"
 KEY = b"DRONE_SECURE_KEY"
 IV  = b"INITVECTOR123456"
 
+# Blockchain Crypto Setup
+crypto_queue = queue.Queue()
+
+def crypto_transmission_engine():
+    HW_SALT = "SPECTR_MAC_9X4Z"
+    while True:
+        try:
+            payload = crypto_queue.get()
+            level = payload.get("threatLevel", "LOW")
+            
+            raw_str = json.dumps(payload, sort_keys=True)
+            
+            if level == "LOW":
+                # Safe: Normal mode -> Continuous data -> SHA-256
+                hash_val = hashlib.sha256(raw_str.encode()).hexdigest()
+                payload["blockchain_hash"] = hash_val
+                payload["security_level"] = "SAFE"
+                delay = 0
+
+            elif level == "ELEVATED":
+                # Alert: Suspicious activity -> Interval data -> SHA-512 + salt
+                sw_salt = secrets.token_hex(4)
+                salted_str = sw_salt + raw_str
+                hash_val = hashlib.sha512(salted_str.encode()).hexdigest()
+                payload["blockchain_hash"] = hash_val
+                payload["salt"] = sw_salt
+                payload["security_level"] = "ALERT"
+                delay = 2.0  # Constant interval
+
+            else:
+                # Ghost: Stealth mode -> Random bursts -> SHA-512 + HW salt
+                salted_str = HW_SALT + raw_str
+                hash_val = hashlib.sha512(salted_str.encode()).hexdigest()
+                payload["blockchain_hash"] = hash_val
+                payload["salt"] = "HW_LOCKED"
+                payload["security_level"] = "GHOST"
+                delay = random.uniform(0.3, 2.5) # Chaotic burst timing
+                
+            if delay > 0:
+                 time.sleep(delay)
+                 
+            requests.post("http://localhost:5000/api/data", json=payload, timeout=2)
+        except Exception as e:
+            pass
+
+threading.Thread(target=crypto_transmission_engine, daemon=True).start()
+
 # Attempt IP Camera Stream connection
 latest_frame = None
 camera_online = False
@@ -22,7 +69,7 @@ cap = None
 def cam_thread():
     global latest_frame, camera_online, cap
     print("[SYSTEM] Attempting concurrent connection to Drone IP Camera...", flush=True)
-    cap = cv2.VideoCapture("http://192.168.137.165:8080/video")
+    cap = cv2.VideoCapture("http://192.168.51.208:8080/video")
     while True:
         ret, frame = cap.read()
         if ret:
@@ -159,11 +206,11 @@ def on_message(client, userdata, msg):
     }
 
     try:
-        requests.post("http://localhost:5000/api/data", json=payload, timeout=2)
+        crypto_queue.put(payload)
     except Exception as e:
         pass
 
-    print("\n---- SECURE TELEMETRY SYNCED TO WEB ----")
+    print("\n---- SECURE TELEMETRY SHIPPED TO CRYPTO ENGINE ----")
     print("Camera Status  :", cam_status)
     print("Human Detected :", "YES" if intrusion else "NO")
     print("Temperature    :", temp, "C")

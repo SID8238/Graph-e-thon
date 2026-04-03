@@ -15,7 +15,7 @@ app.use(cors());
 app.use(express.json());
 
 // MongoDB Connection
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/spectar';
+const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/spectr';
 mongoose.connect(MONGO_URI)
   .then(() => console.log('MongoDB connected'))
   .catch(err => console.error('MongoDB error:', err));
@@ -35,7 +35,10 @@ const SensorDataSchema = new mongoose.Schema({
   longitude: { type: Number },
   speed: { type: Number },
   heading: { type: Number },
-  threatScore: { type: Number, min: 0, max: 100 }
+  threatScore: { type: Number, min: 0, max: 100 },
+  blockchain_hash: { type: String },
+  salt: { type: String },
+  security_level: { type: String }
 });
 
 const AlertSchema = new mongoose.Schema({
@@ -110,7 +113,7 @@ wss.on('connection', (ws) => {
   clients.add(ws);
   console.log(`Client connected. Total: ${clients.size}`);
 
-  ws.send(JSON.stringify({ type: 'CONNECTED', message: 'SPECTAR system online' }));
+  ws.send(JSON.stringify({ type: 'CONNECTED', message: 'SPECTR system online' }));
 
   ws.on('close', () => {
     clients.delete(ws);
@@ -179,6 +182,7 @@ if (process.env.SIMULATE === 'true') {
 // 🛑 REAL DATA MODE: Native Routing of Payload ────────────────────────────
 
 let realtimeThreatHistory = [];
+let breachData = { active: false, timer: null };
 
 app.post("/api/data", async (req, res) => {
   const data = req.body;
@@ -190,6 +194,22 @@ app.post("/api/data", async (req, res) => {
   }
 
   console.log("Received from Python:", data.humanDetected, data.threatScore);
+
+  // Breach Detection: Extreme Tilt + High Threat indicates drone capture!
+  if (!breachData.active && (Math.abs(data.pitch) > 60 || Math.abs(data.roll) > 60) && data.threatScore > 65) {
+      breachData.active = true;
+      console.log("🚨 PROBABLE DRONE CAPTURE DETECTED. INITIATING BREACH PROTOCOL!");
+      broadcastToClients({ type: 'ALERT', data: { timestamp: new Date(), severity: 'CRITICAL', message: `BREACH PROTOCOL: DRONE CAPTURED! AWAITING ADMIN AUTH FOR WIPE!` }});
+      
+      breachData.timer = setTimeout(async () => {
+         if (breachData.active) {
+            console.log("☠️ BREACH TIMEOUT REACHED -> WIPING DB SECRETS!");
+            await SensorData.deleteMany({});
+            broadcastToClients({ type: 'ALERT', data: { timestamp: new Date(), severity: 'CRITICAL', message: `DATA WIPED: SPECTR AUTO-DELETE PROTOCOL EXECUTED.` }});
+            breachData.active = false;
+         }
+      }, 30000); // 30 second timer
+  }
 
   // Dynamic System Log Injection based on AI/Sensors
   if (data.obstacle && data.obstacle !== "CLEAR") {
@@ -211,8 +231,37 @@ app.post("/api/data", async (req, res) => {
   try {
     const entry = new SensorData(data);
     entry.save().catch(e => {}); // Silent ignore DB offline
+    
+    // 💾 Physical File Logging for Live Demonstration
+    const fs = require('fs');
+    const path = require('path');
+    const logFilePath = path.join(__dirname, '..', 'Logs', 'spectr_blockchain_ledger.txt');
+    
+    const logLine = `[${new Date().toLocaleString()}] LVL: ${data.security_level || 'SAFE'} | HASH: ${data.blockchain_hash} | SCORE: ${data.threatScore}\n`;
+    fs.appendFile(logFilePath, logLine, (err) => {
+        if (err) console.log("Failed to write physical log file:", err);
+    });
+    
   } catch (e) { }
 });
 
+app.post("/api/breach/approve", async (req, res) => {
+   if (!breachData.active) return res.status(400).send("No active breach");
+   console.log("☠️ ADMIN APPROVED BREACH -> SECURE WIPE INITIATED!");
+   clearTimeout(breachData.timer);
+   await SensorData.deleteMany({});
+   broadcastToClients({ type: 'ALERT', data: { timestamp: new Date(), severity: 'CRITICAL', message: `DATA WIPED: ADMIN EXECUTED SECURE WIPE.` }});
+   breachData.active = false;
+   res.send("BREACH APPROVED");
+});
+
+app.post("/api/breach/cancel", async (req, res) => {
+   if (!breachData.active) return res.status(400).send("No active breach");
+   clearTimeout(breachData.timer);
+   breachData.active = false;
+   broadcastToClients({ type: 'ALERT', data: { timestamp: new Date(), severity: 'INFO', message: `BREACH CANCELLED: Stand down order given.` }});
+   res.send("BREACH CANCELLED");
+});
+
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => console.log(`SPECTAR server running on port ${PORT}`));
+server.listen(PORT, () => console.log(`SPECTR server running on port ${PORT}`));
