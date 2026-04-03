@@ -176,123 +176,42 @@ if (process.env.SIMULATE === 'true') {
   }, 2000);
 }
 
-// 🛑 REAL DATA MODE: Node.js natively handles the HiveMQ connection and AES decryption to bypass Python socket deadlocks!
+// 🛑 REAL DATA MODE: Native Routing of Payload ────────────────────────────
 
-const mqtt = require('mqtt');
-const crypto = require('crypto');
+let realtimeThreatHistory = [];
 
-let latestVisionStatus = { humanDetected: false, camStatus: "NOT CONNECTED" };
+app.post("/api/data", async (req, res) => {
+  const data = req.body;
 
-// AES Config
-const KEY = Buffer.from('DRONE_SECURE_KEY', 'utf8');
-const IV = Buffer.from('INITVECTOR123456', 'utf8');
-
-function decryptPacket(enc) {
-  try {
-    const raw = Buffer.from(enc.trim(), 'base64');
-    const decipher = crypto.createDecipheriv('aes-128-cbc', KEY, IV);
-    decipher.setAutoPadding(true);
-    let decrypted = decipher.update(raw, undefined, 'utf8');
-    decrypted += decipher.final('utf8');
-    return decrypted;
-  } catch (e) {
-    return null;
+  if (data.threatScore !== undefined) {
+    realtimeThreatHistory.push(data.threatScore);
+    if (realtimeThreatHistory.length > 60) realtimeThreatHistory.shift();
+    data.threatHistory = [...realtimeThreatHistory];
   }
-}
 
-app.post("/api/vision", (req, res) => {
-  latestVisionStatus = req.body;
-  res.status(200).send("Vision Layer Updated");
-});
+  console.log("Received from Python:", data.humanDetected, data.threatScore);
 
-console.log("Connecting natively to HiveMQ Drone Cloud...");
-const mqttClient = mqtt.connect('mqtts://d4152fc4908b486d88b26fefd6dfa7ab.s1.eu.hivemq.cloud:8883', {
-  username: 'Drone123',
-  password: 'Spectr@123',
-  rejectUnauthorized: false
-});
+  // Dynamic System Log Injection based on AI/Sensors
+  if (data.obstacle && data.obstacle !== "CLEAR") {
+    broadcastToClients({ type: 'ALERT', data: { timestamp: new Date(), severity: 'WARNING', message: `NAV-SYS: ${data.obstacle} -> Auto-Routing ${data.move}` }});
+  } else if (data.threatScore > 65) {
+    broadcastToClients({ type: 'ALERT', data: { timestamp: new Date(), severity: 'CRITICAL', message: `YOLO-AI: HIGH TARGET THREAT CONFIRMED (LVL ${Math.round(data.threatScore)})` }});
+  } else if (data.humanDetected) {
+    broadcastToClients({ type: 'ALERT', data: { timestamp: new Date(), severity: 'INFO', message: "TARGET ACQUIRED: Human Presence Verified by YOLO" }});
+  } else if (data.magnetic === 0) {
+    broadcastToClients({ type: 'ALERT', data: { timestamp: new Date(), severity: 'WARNING', message: "ANOMALY: High Magnetic Interference Detected" }});
+  }
 
-mqttClient.on('connect', () => {
-  console.log("✅ NodeJS Hardware Cloud Bridge Connected!");
-  mqttClient.subscribe('drone/DRONE_01');
-});
-
-mqttClient.on('message', async (topic, message) => {
-  const decoded = decryptPacket(message.toString());
-  if (!decoded) return;
+  // Send to frontend via WebSocket IMMEDIATELY for zero latency
+  broadcastToClients({ type: 'SENSOR_UPDATE', data });
   
-  const start = decoded.indexOf('{');
-  const end = decoded.lastIndexOf('}');
-  if (start === -1 || end === -1) return;
+  // Respond to Python script immediately
+  res.send("OK");
   
-  const clean = decoded.substring(start, end + 1).replace(/nan/g, "0");
   try {
-    const sensor = JSON.parse(clean);
-    
-    const temp = parseFloat(sensor.temp || 30);
-    const humidity = parseFloat(sensor.humidity || 50);
-    const tilt = parseFloat(sensor.tilt || 0);
-    const magnetic = parseInt(sensor.magnetic || 1);
-    const front = parseFloat(sensor.frontDist || 150);
-    const side = parseFloat(sensor.sideDist || 150);
-    const gps = sensor.gps || "0,0";
-    
-    let obstacle = "CLEAR";
-    if (front < 30) obstacle = "FRONT DETECTED";
-    else if (side < 30) obstacle = "SIDE DETECTED";
-    
-    let threat = 0;
-    if (latestVisionStatus.humanDetected) threat += 40;
-    if (tilt > 4) threat += 15;
-    if (temp > 30) threat += 10;
-    if (front < 50) threat += 20;
-    if (side < 30) threat += 10;
-    if (magnetic === 0) threat += 5;
-    
-    let level = "LOW";
-    if (threat > 60) level = "HIGH";
-    else if (threat > 25) level = "ELEVATED";
-    
-    let move = "FORWARD";
-    if (front < 30) move = "LEFT";
-    else if (latestVisionStatus.humanDetected) move = "LEFT";
-    else if (tilt > 4) move = "RIGHT";
-    
-    let lat = 0.0, lng = 0.0;
-    if (gps.includes(',')) {
-      const parts = gps.split(',');
-      lat = parseFloat(parts[0]);
-      lng = parseFloat(parts[1]);
-    }
-    
-    const payload = {
-      threatLevel: level,
-      humanDetected: latestVisionStatus.humanDetected,
-      temperature: temp,
-      humidity: humidity,
-      pitch: tilt,
-      roll: 0.0,
-      latitude: lat,
-      longitude: lng,
-      threatScore: threat,
-      magneticHeading: magnetic === 1 ? 0 : 180,
-      magnetic: magnetic,
-      frontDist: front,
-      sideDist: side,
-      obstacle: obstacle,
-      move: move,
-      speed: 0,
-      heading: 0
-    };
-    
-    console.log("🔥 [HARDWARE EVENT] Processed incoming AES HiveMQ Packet!");
-    broadcastToClients({ type: 'SENSOR_UPDATE', data: payload });
-    
-    try {
-      SensorData.create(payload).catch(e => {});
-    } catch (e) { }
-
-  } catch(e) { }
+    const entry = new SensorData(data);
+    entry.save().catch(e => {}); // Silent ignore DB offline
+  } catch (e) { }
 });
 
 const PORT = process.env.PORT || 5000;
