@@ -11,7 +11,7 @@
 #include <math.h>
 
 // WIFI
-const char* ssid = "Drone1";
+const char* ssid = "Drone2";
 const char* password = "12345678";
 
 // MQTT

@@ -22,6 +22,13 @@ def crypto_transmission_engine():
     while True:
         try:
             payload = crypto_queue.get()
+            # 🛑 FLUSH BACKLOG: Discard stale packets if the drone transmits faster than the delay
+            while not crypto_queue.empty():
+                try:
+                    payload = crypto_queue.get_nowait()
+                except:
+                    pass
+                    
             level = payload.get("threatLevel", "LOW")
             
             raw_str = json.dumps(payload, sort_keys=True)
