@@ -1,32 +1,32 @@
-#define MQTT_MAX_PACKET_SIZE 512   // 🔥 VERY IMPORTANT
+#define MQTT_MAX_PACKET_SIZE 512 // 🔥 VERY IMPORTANT
 
-#include <WiFi.h>
-#include <WiFiClientSecure.h>
-#include <PubSubClient.h>
-#include <DHT.h>
-#include <TinyGPS++.h>
-#include <HardwareSerial.h>
 #include "mbedtls/aes.h"
 #include "mbedtls/base64.h"
+#include <DHT.h>
+#include <HardwareSerial.h>
+#include <PubSubClient.h>
+#include <TinyGPS++.h>
+#include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <math.h>
 
 // WIFI
-const char* ssid = "Drone2";
-const char* password = "12345678";
+const char *ssid = "Drone2";
+const char *password = "12345678";
 
 // MQTT
-const char* mqtt_server = "d4152fc4908b486d88b26fefd6dfa7ab.s1.eu.hivemq.cloud";
+const char *mqtt_server = "d4152fc4908b486d88b26fefd6dfa7ab.s1.eu.hivemq.cloud";
 const int mqtt_port = 8883;
-const char* mqtt_user = "Drone123";
-const char* mqtt_pass = "Spectr@123";
-const char* topic = "drone/DRONE_01";
+const char *mqtt_user = "Drone123";
+const char *mqtt_pass = "Spectr@123";
+const char *topic = "drone/DRONE_01";
 
 WiFiClientSecure espClient;
 PubSubClient mqtt(espClient);
 
 // AES
-const char* aes_key="DRONE_SECURE_KEY";
-const char* aes_iv ="INITVECTOR123456";
+const char *aes_key = "DRONE_SECURE_KEY";
+const char *aes_iv = "INITVECTOR123456";
 
 // DHT
 #define DHTPIN 4
@@ -51,29 +51,31 @@ float refX, refY, refZ;
 TinyGPSPlus gps;
 HardwareSerial gpsSerial(2);
 
-unsigned long lastSend=0;
+unsigned long lastSend = 0;
 
 // ---------- ADXL ----------
-float avg(int pin){
-  long s=0;
-  for(int i=0;i<10;i++) s+=analogRead(pin);
-  return s/10.0;
+float avg(int pin) {
+  long s = 0;
+  for (int i = 0; i < 10; i++)
+    s += analogRead(pin);
+  return s / 10.0;
 }
 
-float getTilt(){
-  float x=avg(Xpin), y=avg(Ypin), z=avg(Zpin);
+float getTilt() {
+  float x = avg(Xpin), y = avg(Ypin), z = avg(Zpin);
 
-  float dot = x*refX + y*refY + z*refZ;
-  float m1 = sqrt(x*x + y*y + z*z);
-  float m2 = sqrt(refX*refX + refY*refY + refZ*refZ);
+  float dot = x * refX + y * refY + z * refZ;
+  float m1 = sqrt(x * x + y * y + z * z);
+  float m2 = sqrt(refX * refX + refY * refY + refZ * refZ);
 
-  if(m1==0 || m2==0) return 0;
+  if (m1 == 0 || m2 == 0)
+    return 0;
 
-  return acos(dot/(m1*m2)) * 57.2958;
+  return acos(dot / (m1 * m2)) * 57.2958;
 }
 
 // ---------- ULTRASONIC ----------
-float getDistance(int trig, int echo){
+float getDistance(int trig, int echo) {
   digitalWrite(trig, LOW);
   delayMicroseconds(2);
   digitalWrite(trig, HIGH);
@@ -81,49 +83,52 @@ float getDistance(int trig, int echo){
   digitalWrite(trig, LOW);
 
   long duration = pulseIn(echo, HIGH, 30000);
-  if(duration == 0) return 150;
+  if (duration == 0)
+    return 150;
 
   return duration * 0.034 / 2;
 }
 
 // ---------- AES ----------
-String encryptAES(String msg){
+String encryptAES(String msg) {
   mbedtls_aes_context aes;
   mbedtls_aes_init(&aes);
-  mbedtls_aes_setkey_enc(&aes,(const unsigned char*)aes_key,128);
+  mbedtls_aes_setkey_enc(&aes, (const unsigned char *)aes_key, 128);
 
-  int len=msg.length();
-  int pad=16-(len%16);
-  int total=len+pad;
+  int len = msg.length();
+  int pad = 16 - (len % 16);
+  int total = len + pad;
 
   unsigned char input[256];
   unsigned char output[256];
   unsigned char iv[16];
 
-  memcpy(input,msg.c_str(),len);
-  for(int i=len;i<total;i++) input[i]=pad;
+  memcpy(input, msg.c_str(), len);
+  for (int i = len; i < total; i++)
+    input[i] = pad;
 
-  memcpy(iv,aes_iv,16);
+  memcpy(iv, aes_iv, 16);
 
-  for(int i=0;i<total;i+=16)
-    mbedtls_aes_crypt_cbc(&aes,MBEDTLS_AES_ENCRYPT,16,iv,input+i,output+i);
+  for (int i = 0; i < total; i += 16)
+    mbedtls_aes_crypt_cbc(&aes, MBEDTLS_AES_ENCRYPT, 16, iv, input + i,
+                          output + i);
 
   size_t outLen;
   unsigned char base64[512];
 
-  mbedtls_base64_encode(base64,sizeof(base64),&outLen,output,total);
+  mbedtls_base64_encode(base64, sizeof(base64), &outLen, output, total);
 
   mbedtls_aes_free(&aes);
 
-  return String((char*)base64).substring(0,outLen);
+  return String((char *)base64).substring(0, outLen);
 }
 
 // MQTT
-void connectMQTT(){
-  while(!mqtt.connected()){
-    if(mqtt.connect("ESP32_DRONE", mqtt_user, mqtt_pass)){
+void connectMQTT() {
+  while (!mqtt.connected()) {
+    if (mqtt.connect("ESP32_DRONE", mqtt_user, mqtt_pass)) {
       Serial.println("MQTT Connected");
-    }else{
+    } else {
       Serial.println("Retrying MQTT...");
       delay(2000);
     }
@@ -131,14 +136,15 @@ void connectMQTT(){
 }
 
 // SETUP
-void setup(){
+void setup() {
   Serial.begin(115200);
 
-  WiFi.begin(ssid,password);
-  while(WiFi.status()!=WL_CONNECTED) delay(500);
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED)
+    delay(500);
 
   espClient.setInsecure();
-  mqtt.setServer(mqtt_server,mqtt_port);
+  mqtt.setServer(mqtt_server, mqtt_port);
 
   dht.begin();
 
@@ -148,48 +154,53 @@ void setup(){
   pinMode(ECHO2, INPUT);
   pinMode(MAG_PIN, INPUT);
 
-  gpsSerial.begin(9600,SERIAL_8N1,16,17);
+  gpsSerial.begin(9600, SERIAL_8N1, 16, 17);
 
   delay(3000);
-  refX=avg(Xpin); refY=avg(Ypin); refZ=avg(Zpin);
+  refX = avg(Xpin);
+  refY = avg(Ypin);
+  refZ = avg(Zpin);
 }
 
 // LOOP
-void loop(){
+void loop() {
 
-  if(!mqtt.connected()) connectMQTT();
+  if (!mqtt.connected())
+    connectMQTT();
   mqtt.loop();
   delay(10);
 
-  while(gpsSerial.available()) gps.encode(gpsSerial.read());
+  while (gpsSerial.available())
+    gps.encode(gpsSerial.read());
 
-  if(millis()-lastSend>2000){
-    lastSend=millis();
+  if (millis() - lastSend > 2000) {
+    lastSend = millis();
 
     float temp = dht.readTemperature();
     float humidity = dht.readHumidity();
 
-    if(isnan(temp)) temp = 30;
-    if(isnan(humidity)) humidity = 50;
+    if (isnan(temp))
+      temp = 30;
+    if (isnan(humidity))
+      humidity = 50;
 
     float tilt = getTilt();
     float frontDist = getDistance(TRIG1, ECHO1);
-    float sideDist  = getDistance(TRIG2, ECHO2);
+    float sideDist = getDistance(TRIG2, ECHO2);
     int magnetic = digitalRead(MAG_PIN);
 
-    String gpsData="0,0";
-    if(gps.location.isValid())
-      gpsData=String(gps.location.lat(),6)+","+String(gps.location.lng(),6);
+    String gpsData = "0,0";
+    if (gps.location.isValid())
+      gpsData =
+          String(gps.location.lat(), 6) + "," + String(gps.location.lng(), 6);
 
-    String json="{\"temp\":"+String(temp)+
-                 ",\"humidity\":"+String(humidity)+
-                 ",\"tilt\":"+String(tilt)+
-                 ",\"magnetic\":"+String(magnetic)+
-                 ",\"frontDist\":"+String(frontDist)+
-                 ",\"sideDist\":"+String(sideDist)+
-                 ",\"gps\":\""+gpsData+"\"}";
+    String json =
+        "{\"temp\":" + String(temp) + ",\"humidity\":" + String(humidity) +
+        ",\"tilt\":" + String(tilt) + ",\"magnetic\":" + String(magnetic) +
+        ",\"frontDist\":" + String(frontDist) +
+        ",\"sideDist\":" + String(sideDist) + ",\"gps\":\"" + gpsData + "\"}";
 
-    String enc=encryptAES(json);
+    String enc = encryptAES(json);
     enc.trim();
 
     Serial.println("\nSending JSON:");
@@ -198,9 +209,9 @@ void loop(){
     Serial.println("Encrypted:");
     Serial.println(enc);
 
-    if(mqtt.publish(topic, enc.c_str())){
+    if (mqtt.publish(topic, enc.c_str())) {
       Serial.println("✅ Publish Success");
-    }else{
+    } else {
       Serial.println("❌ Publish Failed");
     }
   }

@@ -1,4 +1,16 @@
 print("[TRACE] Booting bridge...", flush=True)
+
+# --- WINDOWS HANG WORKAROUND ---
+# PyTorch and Ultralytics occasionally hang on certain Windows versions when querying the WMI API during import.
+# By mocking the system introspections, the code bypasses those deep OS calls entirely and loads instantly.
+import platform
+from collections import namedtuple
+UnameResult = namedtuple('uname_result', ['system', 'node', 'release', 'version', 'machine', 'processor'])
+platform.uname = lambda: UnameResult("Windows", "PC", "10", "10.0.19041", "AMD64", "AMD64")
+platform.system = lambda: "Windows"
+platform.win32_ver = lambda *a, **k: ("10", "10.0.19041", "", "Multiprocessor Free")
+# -------------------------------
+
 import time, json, cv2, threading, requests, base64, ssl, queue, hashlib, secrets, random
 import paho.mqtt.client as mqtt
 from Crypto.Cipher import AES
