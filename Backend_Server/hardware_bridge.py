@@ -4,6 +4,8 @@ import paho.mqtt.client as mqtt
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import unpad
 from ultralytics import YOLO
+from flask import Flask, Response
+from flask_cors import CORS
 
 BROKER = "d4152fc4908b486d88b26fefd6dfa7ab.s1.eu.hivemq.cloud"
 PORT = 8883
@@ -76,14 +78,27 @@ cap = None
 def cam_thread():
     global latest_frame, camera_online, cap
     print("[SYSTEM] Attempting concurrent connection to Drone IP Camera...", flush=True)
-    cap = cv2.VideoCapture("http://192.168.51.208:8080/video")
+    video_url = "http://192.168.137.27:8080/video"
+    cap = cv2.VideoCapture(video_url)
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    
     while True:
+        if not cap.isOpened():
+            print("[SYSTEM] Camera disconnected. Reconnecting...", flush=True)
+            cap.release()
+            cap = cv2.VideoCapture(video_url)
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            time.sleep(2)
+            continue
+            
         ret, frame = cap.read()
         if ret:
             latest_frame = frame
             camera_online = True
         else:
             camera_online = False
+            print("[SYSTEM] Camera frame dropped. Reconnecting...", flush=True)
+            cap.release() # Force reconnect on next iteration
             time.sleep(1)
 
 threading.Thread(target=cam_thread, daemon=True).start()
@@ -96,6 +111,36 @@ try:
     print("[SYSTEM] YOLO Model loaded successfully!", flush=True)
 except Exception as e:
     print(f"[SYSTEM] YOLO failed to load: {e}", flush=True)
+
+# ---- FLASK VIDEO STREAMING SERVER ----
+app_flask = Flask(__name__)
+CORS(app_flask)
+display_frame = None
+
+def gen_frames():
+    global display_frame
+    while True:
+        if display_frame is not None:
+            ret, buffer = cv2.imencode('.jpg', display_frame)
+            frame_bytes = buffer.tobytes()
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+        else:
+            time.sleep(0.1)
+
+@app_flask.route('/video_feed')
+def video_feed():
+    return Response(gen_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+@app_flask.route('/')
+def index():
+    return {"status": "AI Hardware Bridge Server Ready"}
+
+def run_flask():
+    print("[SYSTEM] Flask Video Proxy starting on port 5001...", flush=True)
+    app_flask.run(host='0.0.0.0', port=5001, debug=False, use_reloader=False)
+
+threading.Thread(target=run_flask, daemon=True).start()
 
 def decrypt_packet(enc):
     try:
@@ -139,9 +184,11 @@ def on_message(client, userdata, msg):
     cam_status = "CONNECTED"
 
     # Evaluate Video Feed via YOLO
+    global display_frame
     if camera_online and latest_frame is not None:
         try:
             results = model.predict(latest_frame, imgsz=320, conf=0.5, classes=[0], verbose=False)
+            display_frame = results[0].plot() # Render the AI bounding boxes onto the frame directly
             for r in results:
                 if len(r.boxes) > 0:
                     intrusion = True
@@ -185,6 +232,7 @@ def on_message(client, userdata, msg):
 
     # --- ROUTE TO NODE.JS WEB DASHBOARD ---
     lat, lng = 0.0, 0.0
+    
     if "," in gps:
         try:
             parts = gps.split(',')

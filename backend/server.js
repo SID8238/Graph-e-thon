@@ -4,6 +4,7 @@ const WebSocket = require('ws');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const dotenv = require('dotenv');
+const { sendAlert } = require('../Cloud_Functions/alert_handler'); // Intrusion Email Protocol
 
 dotenv.config();
 
@@ -183,6 +184,7 @@ if (process.env.SIMULATE === 'true') {
 
 let realtimeThreatHistory = [];
 let breachData = { active: false, timer: null };
+let lastEmailTime = 0; // Prevent Gmail spam bans during constant intrusion
 
 app.post("/api/data", async (req, res) => {
   const data = req.body;
@@ -195,11 +197,20 @@ app.post("/api/data", async (req, res) => {
 
   console.log("Received from Python:", data.humanDetected, data.threatScore);
 
+  // Email Alert Threshold (Spam protected to 1 max per minute)
+  if (data.threatScore > 85 && (Date.now() - lastEmailTime) > 60000) {
+      console.log("📧 SENDING EMAIL ALERT FOR HIGH INTRUSION!");
+      sendAlert("🚨 HIGH THREAT INTRUSION DETECTED", `SPECTR YOLO system has detected a critical high-level threat in the perimeter.\n\nSeverity Score: ${data.threatScore.toFixed(1)}\nHuman Subject Verified: ${data.humanDetected}\nCoordinates: ${data.latitude}, ${data.longitude}`);
+      lastEmailTime = Date.now();
+  }
+
   // Breach Detection: Extreme Tilt + High Threat indicates drone capture!
   if (!breachData.active && (Math.abs(data.pitch) > 60 || Math.abs(data.roll) > 60) && data.threatScore > 65) {
       breachData.active = true;
       console.log("🚨 PROBABLE DRONE CAPTURE DETECTED. INITIATING BREACH PROTOCOL!");
       broadcastToClients({ type: 'ALERT', data: { timestamp: new Date(), severity: 'CRITICAL', message: `BREACH PROTOCOL: DRONE CAPTURED! AWAITING ADMIN AUTH FOR WIPE!` }});
+      
+      sendAlert("CRITICAL HARDWARE CAPTURE DETECTED", "SPECTR Unit 7 has detected kinematic conditions matching physical capture. Breach protocol initiated. Hard drive wipe in 30 seconds unless aborted via dashboard.");
       
       breachData.timer = setTimeout(async () => {
          if (breachData.active) {

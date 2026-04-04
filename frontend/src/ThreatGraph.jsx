@@ -1,48 +1,36 @@
 import React from 'react';
-import { Activity } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
 
 export default function ThreatGraph({ history }) {
-  const data = history || [];
+  const data = history && history.length > 0 
+    ? history.map(p => ({ time: p.time, value: p.value || p })) 
+    : Array.from({ length: 60 }).map((_, i) => ({ time: new Date(Date.now() - (60 - i) * 1000), value: 0 }));
 
   return (
-    <div className="relative flex flex-col p-4 rounded-lg border w-full h-full overflow-hidden"
-      style={{ borderColor: '#22c55e44', background: '#052e1688' }}>
-      
-      <div className="flex items-center gap-2 mb-2 z-10">
-        <Activity size={16} color="#22c55e" className="opacity-80" />
-        <div className="text-xs font-mono text-green-400/80 tracking-widest">THREAT HISTORY</div>
+    <div className="w-full h-full flex flex-col pt-1">
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="text-xs font-semibold tracking-widest text-slate-400">THREAT ANALYTICS</h3>
+        <div className="text-[10px] text-slate-500 font-mono">60s WINDOW</div>
       </div>
-
-      <div className="relative flex items-end justify-between flex-1 gap-[2px] sm:gap-1 w-full mt-2 h-full z-10">
-        {data.length === 0 ? (
-          <div className="w-full text-center text-xs font-mono text-green-400/40 my-auto animate-pulse">AWAITING SENSOR DATA...</div>
-        ) : (
-          data.map((point, index) => {
-            const val = point.value || 0;
-            const color = val > 65 ? '#ef4444' : val > 35 ? '#f59e0b' : '#22c55e';
-            return (
-              <div
-                key={index}
-                className="flex-1 rounded-t border-t transition-all duration-500 ease-out"
-                style={{
-                  height: `${Math.max(2, val)}%`,
-                  background: `linear-gradient(0deg, ${color}22, ${color}88)`,
-                  borderColor: color,
-                  boxShadow: `0 -4px 12px ${color}44`
-                }}
-              />
-            );
-          })
-        )}
-      </div>
-
-      {/* Grid lines overlay layout */}
-      <div className="absolute inset-x-4 bottom-4 top-14 pointer-events-none border-b border-l border-green-500/20 z-0">
-        <div className="absolute w-full border-t border-green-500/10 top-1/3" />
-        <div className="absolute w-full border-t border-green-500/10 top-2/3" />
-        <div className="absolute h-full border-l border-green-500/10 left-1/4" />
-        <div className="absolute h-full border-l border-green-500/10 left-2/4" />
-        <div className="absolute h-full border-l border-green-500/10 left-3/4" />
+      <div className="flex-1 w-full -ml-4">
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={data}>
+            <defs>
+              <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#22d3ee" stopOpacity={0.4}/>
+                <stop offset="95%" stopColor="#22d3ee" stopOpacity={0}/>
+              </linearGradient>
+            </defs>
+            <XAxis dataKey="time" tick={false} axisLine={{ stroke: '#ffffff10' }} tickLine={false} />
+            <YAxis domain={[0, 100]} stroke="#64748b" fontSize={10} axisLine={false} tickLine={false} tickMargin={10} />
+            <Tooltip 
+              contentStyle={{ backgroundColor: 'rgba(15, 23, 42, 0.9)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#f8fafc', fontSize: '12px' }}
+              labelFormatter={() => 'Score'}
+              itemStyle={{ color: '#22d3ee' }}
+            />
+            <Area type="monotone" dataKey="value" stroke="#22d3ee" strokeWidth={3} fillOpacity={1} fill="url(#colorValue)" />
+          </AreaChart>
+        </ResponsiveContainer>
       </div>
     </div>
   );

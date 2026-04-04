@@ -1,99 +1,42 @@
-import React, { useEffect, useRef } from 'react';
+import React from 'react';
+import './GPSMap.css';
 
-export default function GPSMap({ lat = 34.1005, lng = -118.3250, heading = 0, speed = 0 }) {
-  const mapRef = useRef(null);
-  const mapInstanceRef = useRef(null);
-  const markerRef = useRef(null);
-  const trailRef = useRef(null);
-  const leafletLoaded = useRef(false);
-
-  useEffect(() => {
-    if (leafletLoaded.current) return;
-    leafletLoaded.current = true;
-
-    // Inject Leaflet CSS
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-    document.head.appendChild(link);
-
-    // Inject Leaflet JS
-    const script = document.createElement('script');
-    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-    script.onload = () => initMap();
-    document.head.appendChild(script);
-  }, []);
-
-  const initMap = () => {
-    if (!mapRef.current || mapInstanceRef.current) return;
-    const L = window.L;
-
-    const map = L.map(mapRef.current, {
-      center: [lat, lng],
-      zoom: 15,
-      zoomControl: false,
-      attributionControl: false,
-    });
-
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      maxZoom: 19,
-    }).addTo(map);
-
-    const arrowIcon = L.divIcon({
-      className: '',
-      html: `<div style="transform: rotate(${heading}deg); color: #00ff41; text-shadow: 0 0 8px #00ff41; font-size: 24px;">▲</div>`,
-      iconSize: [20, 20],
-      iconAnchor: [10, 10],
-    });
-
-    const marker = L.marker([lat, lng], { icon: arrowIcon }).addTo(map);
-    markerRef.current = marker;
-
-    const trail = L.polyline([[lat, lng]], {
-      color: '#00ff41',
-      weight: 2,
-      opacity: 0.8,
-      dashArray: '4 6',
-    }).addTo(map);
-    trailRef.current = trail;
-
-    mapInstanceRef.current = map;
-  };
-
-  useEffect(() => {
-    const L = window.L;
-    if (!L || !mapInstanceRef.current || !markerRef.current) return;
-
-    const newLatLng = [lat, lng];
-    markerRef.current.setLatLng(newLatLng);
-    const el = markerRef.current.getElement();
-    if (el) {
-      const inner = el.querySelector('div');
-      if (inner) inner.style.transform = `rotate(${heading}deg)`;
-    }
-
-    mapInstanceRef.current.panTo(newLatLng, { animate: true, duration: 0.8 });
-
-    if (trailRef.current) {
-      const lls = trailRef.current.getLatLngs();
-      lls.push(newLatLng);
-      if (lls.length > 80) lls.shift();
-      trailRef.current.setLatLngs(lls);
-    }
-  }, [lat, lng, heading]);
-
+export default function GPSMap({ lat, lng, heading = 0, speed = 0 }) {
+  const mapUrl = `https://maps.wikimedia.org/osm-intl/14/2813/6513.png`; // Dummy generic map tile
+  
   return (
-    <div className="relative flex flex-col p-4 rounded-lg border w-full h-full overflow-hidden"
-      style={{ borderColor: '#22c55e44', background: '#052e1688' }}>
-      
-      <div className="flex items-center justify-between mb-3 z-10 w-full bg-black/60 px-2 py-1 rounded backdrop-blur-sm border border-green-500/20 absolute top-4 left-0 right-0 mx-auto" style={{ width: '90%' }}>
-        <div className="text-xs font-mono tracking-widest text-green-400">SAT-LINK NAVIGATION</div>
-        <div className="text-[10px] font-mono text-green-400 opacity-70">
-          {lat?.toFixed(4)}°N • {Math.abs(lng)?.toFixed(4)}°W • {speed}km/h
-        </div>
-      </div>
-      
-      <div ref={mapRef} className="w-full h-full rounded border border-green-500/20 z-0" style={{ minHeight: '300px', filter: 'contrast(1.2) brightness(0.9)' }} />
+    <div className="w-full h-full relative bg-slate-900 border border-white/10 rounded-2xl overflow-hidden flex flex-col">
+       <div className="absolute top-4 left-4 z-20 flex gap-2">
+         <div className="bg-black/60 backdrop-blur border border-white/10 px-3 py-1.5 rounded-lg">
+           <div className="text-[9px] text-slate-400 font-bold tracking-widest mb-0.5">LATITUDE</div>
+           <div className="text-sm font-mono text-cyan-400">{lat?.toFixed(5)}°</div>
+         </div>
+         <div className="bg-black/60 backdrop-blur border border-white/10 px-3 py-1.5 rounded-lg">
+           <div className="text-[9px] text-slate-400 font-bold tracking-widest mb-0.5">LONGITUDE</div>
+           <div className="text-sm font-mono text-cyan-400">{lng?.toFixed(5)}°</div>
+         </div>
+       </div>
+
+       <div className="absolute top-4 right-4 z-20 bg-black/60 backdrop-blur border border-white/10 px-3 py-1.5 rounded-lg text-right">
+          <div className="text-[9px] text-slate-400 font-bold tracking-widest mb-0.5">VELOCITY</div>
+          <div className="text-sm font-mono text-white">{speed?.toFixed(1)} <span className="text-[10px] text-slate-400">m/s</span></div>
+       </div>
+
+       {/* Map View */}
+       <div className="absolute inset-0 mix-blend-luminosity opacity-40 bg-cover bg-center" style={{ backgroundImage: `url(${mapUrl})`, filter: 'invert(1) hue-rotate(180deg)' }} />
+       
+       {/* Map Grid */}
+       <div className="absolute inset-0 opacity-10 bg-[linear-gradient(rgba(255,255,255,1)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,1)_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none" />
+
+       {/* Drone Radar Ping */}
+       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 w-24 h-24">
+          <div className="absolute inset-0 rounded-full border border-cyan-400/30 animate-ping opacity-50" />
+          <div className="absolute inset-4 rounded-full border border-cyan-400/50" />
+          {/* Drone Blip */}
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-cyan-400 shadow-[0_0_15px_#22d3ee] flex items-center justify-center" style={{ transform: `translate(-50%, -50%) rotate(${heading}deg)` }}>
+             <div className="w-1 h-2 bg-white rounded-sm mb-2" />
+          </div>
+       </div>
     </div>
   );
 }
